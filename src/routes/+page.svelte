@@ -16,61 +16,76 @@
 	import { bsc } from '@wagmi/core/chains';
 	import { erc20, multisend } from '$lib/abi';
 
+	let isLoading: boolean = false;
 	let amountsWithWallets: string = '';
 	let token: string;
 	let customToken: string;
 	let tokenBalance: bigint = 0n;
 	let tokenDecimals: number = 18;
 	const multisendAddress = '0xfb6bd0c00bd348125a1f6edc36e4b7ff5dbddfba';
+	const NATIVE_TOKEN = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 
 	$: token, customToken, updateTokenBalance(token, customToken)
 	$: token, customToken, updateTokenDecimals(token, customToken)
 
 	const updateTokenDecimals = async (token: string, customToken: string) => {
-		if (token === '0x0') {
-			return
-		}
-		if (token === 'custom') {
-			if (customToken) {
+		try {
+			isLoading = true;
+			if (token === NATIVE_TOKEN) {
+				return
+			}
+			if (token === 'custom') {
+				if (customToken) {
+					tokenDecimals = await readContract(config, {
+						abi: erc20,
+						address: customToken,
+						functionName: 'decimals',
+					}) as number
+				}
+			} else if (token) {
 				tokenDecimals = await readContract(config, {
 					abi: erc20,
-					address: customToken,
+					address: token,
 					functionName: 'decimals',
 				}) as number
 			}
-		} else if (token) {
-			tokenDecimals = await readContract(config, {
-				abi: erc20,
-				address: token,
-				functionName: 'decimals',
-			}) as number
+		} catch (e) {
+			console.error(e)
+		} finally {
+			isLoading = false;
 		}
 	}
 
 	const updateTokenBalance = async (token: string, customToken: string) => {
-		if (!account) return;
-		if (token === '0x0') {
-			tokenBalance= (await getBalance(config, {
-				address: account,
-			})).value
-		} else if (token === 'custom') {
-			if (customToken && account) {
+		try {
+			isLoading = true;
+			if (!account) return;
+			if (token === NATIVE_TOKEN) {
+				tokenBalance= (await getBalance(config, {
+					address: account,
+				})).value
+			} else if (token === 'custom') {
+				if (customToken && account) {
+					tokenBalance = await readContract(config, {
+						abi: erc20,
+						address: customToken,
+						functionName: 'balanceOf',
+						args: [account]
+					}) as bigint
+				}
+			} else if (token) {
 				tokenBalance = await readContract(config, {
 					abi: erc20,
-					address: customToken,
+					address: token,
 					functionName: 'balanceOf',
 					args: [account]
 				}) as bigint
 			}
-		} else if (token) {
-			tokenBalance = await readContract(config, {
-				abi: erc20,
-				address: token,
-				functionName: 'balanceOf',
-				args: [account]
-			}) as bigint
+		} catch (e) {
+			console.error(e)
+		} finally {
+			isLoading = false;
 		}
-		console.log(tokenBalance)
 	}
 
 	let unwatch: any;
@@ -108,59 +123,66 @@
 	})
 
 	const approveAndSend = async () => {
-		const wallets = amountsWithWallets.trim().split('\n').map((line) => {
-			const [address, amount] = line.split(',')
-			return {
-				address: address.trim(),
-				amount: parseUnits(amount.trim(), tokenDecimals)
-			}
-		})
-		const totalAmount = wallets.reduce((acc, wallet) => acc + wallet.amount, 0n)
-		const tokenToSent = token === 'custom' ? customToken : token
-		if (tokenToSent === '0x0') {
-			const txHash = await writeContract(config, {
-				abi: multisend,
-				address: multisendAddress,
-				functionName: 'multiSend',
-				args: [wallets.map((wallet) => ['0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', wallet.address, wallet.amount])],
-				value: totalAmount
-			})
-			await waitForTransactionReceipt(config, {
-				hash: txHash
-			})
-		} else {
-			const allowance = await readContract(config, {
-				abi: erc20,
-				address: tokenToSent,
-				functionName: 'allowance',
-				args: [account, multisendAddress]
-			}) as bigint
-			console.log(allowance, totalAmount, 'allowance')
-			if (allowance < totalAmount) {
-				console.log(allowance, totalAmount, 'allowance')
-				const approveTxHash = await writeContract(config, {
-					abi: erc20,
-					address: tokenToSent,
-					functionName: 'approve',
-					args: [multisendAddress, totalAmount]
-				})
-				if (approveTxHash) {
-					await waitForTransactionReceipt(config, {
-						hash: approveTxHash
-					})
+		try {
+			isLoading = true;
+			const wallets = amountsWithWallets.trim().split('\n').map((line) => {
+				const [address, amount] = line.split(',')
+				return {
+					address: address.trim(),
+					amount: parseUnits(amount.trim(), tokenDecimals)
 				}
-			}
-			const txHash = await writeContract(config, {
-				abi: multisend,
-				address: multisendAddress,
-				functionName: 'multiERC20Transfer',
-				args: [tokenToSent, wallets.map((wallet) => wallet.address), wallets.map((wallet) => wallet.amount)]
 			})
-			if (txHash) {
+			const totalAmount = wallets.reduce((acc, wallet) => acc + wallet.amount, 0n)
+			const tokenToSent = token === 'custom' ? customToken : token
+			if (tokenToSent === NATIVE_TOKEN) {
+				const txHash = await writeContract(config, {
+					abi: multisend,
+					address: multisendAddress,
+					functionName: 'multiSend',
+					args: [wallets.map((wallet) => ['0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', wallet.address, wallet.amount])],
+					value: totalAmount
+				})
 				await waitForTransactionReceipt(config, {
 					hash: txHash
 				})
+			} else {
+				const allowance = await readContract(config, {
+					abi: erc20,
+					address: tokenToSent,
+					functionName: 'allowance',
+					args: [account, multisendAddress]
+				}) as bigint
+				console.log(allowance, totalAmount, 'allowance')
+				if (allowance < totalAmount) {
+					console.log(allowance, totalAmount, 'allowance')
+					const approveTxHash = await writeContract(config, {
+						abi: erc20,
+						address: tokenToSent,
+						functionName: 'approve',
+						args: [multisendAddress, totalAmount]
+					})
+					if (approveTxHash) {
+						await waitForTransactionReceipt(config, {
+							hash: approveTxHash
+						})
+					}
+				}
+				const txHash = await writeContract(config, {
+					abi: multisend,
+					address: multisendAddress,
+					functionName: 'multiERC20Transfer',
+					args: [tokenToSent, wallets.map((wallet) => wallet.address), wallets.map((wallet) => wallet.amount)]
+				})
+				if (txHash) {
+					await waitForTransactionReceipt(config, {
+						hash: txHash
+					})
+				}
 			}
+		} catch (e) {
+			console.error(e)
+		} finally {
+			isLoading = false;
 		}
 	}
 </script>
@@ -176,8 +198,9 @@
 <div style="display:flex; margin-bottom: 8px;">
 	<div>Select Token:</div>
 	<select bind:value={token}>
-		<option value="0x0">BNB</option>
+		<option value={NATIVE_TOKEN}>BNB</option>
 		<option value="0x6AA217312960A21aDbde1478DC8cBCf828110A67">SPIN (0x6A...0A67)</option>
+		<option value="0x2947C22608D742AF4e8C16D86f90a93969f13F8D">CAKEBOT (0x29...3F8D)</option>
 		<option value="0x55d398326f99059ff775485246999027b3197955">USDT (0x55...7955)</option>
 		<option value="custom">Custom</option>
 	</select>
@@ -196,7 +219,7 @@ Example:
 0xb,0.2" />
 </div>
 
-<button on:click={approveAndSend}>Approve and Send</button>
+<button on:click={approveAndSend} disabled={isLoading}>Approve and Send</button>
 
 <style>
 	textarea {
