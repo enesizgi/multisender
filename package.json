@@ -34,5 +34,10 @@
 		"vite": "^5.0.3",
 		"vitest": "^1.2.0"
 	},
-	"type": "module"
+	"type": "module",
+	"dependencies": {
+		"@wagmi/connectors": "^4.1.14",
+		"@wagmi/core": "^2.6.5",
+		"viem": "2.x"
+	}
 }
