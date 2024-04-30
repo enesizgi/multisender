@@ -1,20 +1,20 @@
 <script lang="ts">
+	import type { Address } from 'viem';
 	import { config } from './config';
 	import {parseUnits, formatUnits} from 'viem';
 	import {
 		connect,
 		readContract,
 		writeContract,
-		switchChain,
 		watchAccount,
 		watchChainId,
 		getBalance,
-		waitForTransactionReceipt
+		waitForTransactionReceipt, switchChain
 	} from '@wagmi/core';
 	import { injected } from '@wagmi/connectors';
 	import { onDestroy, onMount } from 'svelte';
-	import { bsc } from '@wagmi/core/chains';
 	import { erc20, multisend } from '$lib/abi';
+	import { bsc, bscTestnet, polygon } from '@wagmi/core/chains';
 
 	let isLoading: boolean = false;
 	let amountsWithWallets: string = '';
@@ -22,11 +22,21 @@
 	let customToken: string;
 	let tokenBalance: bigint = 0n;
 	let tokenDecimals: number = 18;
-	const multisendAddress = '0xfb6bd0c00bd348125a1f6edc36e4b7ff5dbddfba';
+	const nativeCurrencySymbols = {
+		56: 'BNB',
+		97: 'tBNB',
+		137: 'MATIC'
+	}
+	const multiSendAddress = {
+		[bsc.id]: '0xfb6bd0c00bd348125a1f6edc36e4b7ff5dbddfba',
+		[bscTestnet.id]: '0x4707FDD773Eb97CF8A874bB1309C67a80a9616A3',
+		[polygon.id]: '0x4707FDD773Eb97CF8A874bB1309C67a80a9616A3'
+	}
 	const NATIVE_TOKEN = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 
-	$: token, customToken, updateTokenBalance(token, customToken)
-	$: token, customToken, updateTokenDecimals(token, customToken)
+	$: token, customToken, chainId, updateTokenBalance(token, customToken)
+	$: token, customToken, chainId, updateTokenDecimals(token, customToken)
+	$: console.log(token, customToken)
 
 	const updateTokenDecimals = async (token: string, customToken: string) => {
 		try {
@@ -38,7 +48,7 @@
 				if (customToken) {
 					tokenDecimals = await readContract(config, {
 						abi: erc20,
-						address: customToken,
+						address: customToken as Address,
 						functionName: 'decimals',
 					}) as number
 				}
@@ -60,8 +70,10 @@
 		try {
 			isLoading = true;
 			if (!account) return;
+			console.log(token)
 			if (token === NATIVE_TOKEN) {
-				tokenBalance= (await getBalance(config, {
+				console.log(tokenBalance)
+				tokenBalance = (await getBalance(config, {
 					address: account,
 				})).value
 			} else if (token === 'custom') {
@@ -88,7 +100,7 @@
 		}
 	}
 
-	let unwatch: any;
+	let unwatch;
 	onMount(() => {
 		unwatch = watchChainId(config, {
 			onChange(id) {
@@ -112,10 +124,6 @@
 		const result = await connect(config, { connector: injected() })
 		if (result.accounts?.at(0)) account = result.accounts[0]
 		if (result.chainId) chainId = result.chainId
-		console.log(result)
-		if (chainId !== 56) {
-			await switchChain(config, { chainId: bsc.id })
-		}
 	}
 
 	onMount(async () => {
@@ -137,7 +145,7 @@
 			if (tokenToSent === NATIVE_TOKEN) {
 				const txHash = await writeContract(config, {
 					abi: multisend,
-					address: multisendAddress,
+					address: multiSendAddress[chainId],
 					functionName: 'multiSend',
 					args: [wallets.map((wallet) => ['0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', wallet.address, wallet.amount])],
 					value: totalAmount
@@ -148,18 +156,18 @@
 			} else {
 				const allowance = await readContract(config, {
 					abi: erc20,
-					address: tokenToSent,
+					address: tokenToSent as Address,
 					functionName: 'allowance',
-					args: [account, multisendAddress]
+					args: [account, multiSendAddress[chainId]]
 				}) as bigint
 				console.log(allowance, totalAmount, 'allowance')
 				if (allowance < totalAmount) {
 					console.log(allowance, totalAmount, 'allowance')
 					const approveTxHash = await writeContract(config, {
 						abi: erc20,
-						address: tokenToSent,
+						address: tokenToSent as Address,
 						functionName: 'approve',
-						args: [multisendAddress, totalAmount]
+						args: [multiSendAddress[chainId], totalAmount]
 					})
 					if (approveTxHash) {
 						await waitForTransactionReceipt(config, {
@@ -169,7 +177,7 @@
 				}
 				const txHash = await writeContract(config, {
 					abi: multisend,
-					address: multisendAddress,
+					address: multiSendAddress[chainId],
 					functionName: 'multiERC20Transfer',
 					args: [tokenToSent, wallets.map((wallet) => wallet.address), wallets.map((wallet) => wallet.amount)]
 				})
@@ -185,23 +193,43 @@
 			isLoading = false;
 		}
 	}
-</script>
 
-{#if chainId !== undefined && chainId !== 56}
-	<div style="color: red;">Please switch to BSC</div>
-{/if}
+	const onNetworkChange = async (e) => {
+		try {
+			const chain = await switchChain(config, {
+				chainId: +e.target.value
+			})
+			token = NATIVE_TOKEN
+			customToken = ''
+			chainId = chain.id
+		} catch (e) {
+			console.error(e)
+		}
+	}
+</script>
 
 <button style="margin-bottom: 16px;" on:click={connectWallet}>
 	{account ?? 'Connect Wallet'}
 </button>
 
 <div style="display:flex; margin-bottom: 8px;">
+	<div>Select Network:</div>
+	<select on:change={onNetworkChange}>
+		<option value={bsc.id} selected={chainId === bsc.id}>BNB</option>
+		<option value={bscTestnet.id} selected={chainId === bscTestnet.id}>BNB Testnet</option>
+		<option value={polygon.id} selected={chainId === polygon.id}>Polygon</option>
+	</select>
+</div>
+
+<div style="display:flex; margin-bottom: 8px;">
 	<div>Select Token:</div>
 	<select bind:value={token}>
-		<option value={NATIVE_TOKEN}>BNB</option>
-		<option value="0x6AA217312960A21aDbde1478DC8cBCf828110A67">SPIN (0x6A...0A67)</option>
-		<option value="0x2947C22608D742AF4e8C16D86f90a93969f13F8D">CAKEBOT (0x29...3F8D)</option>
-		<option value="0x55d398326f99059ff775485246999027b3197955">USDT (0x55...7955)</option>
+		<option value={NATIVE_TOKEN}>{nativeCurrencySymbols[chainId]}</option>
+		{#if chainId === bsc.id}
+			<option value="0x6AA217312960A21aDbde1478DC8cBCf828110A67">SPIN (0x6A...0A67)</option>
+			<option value="0x2947C22608D742AF4e8C16D86f90a93969f13F8D">CAKEBOT (0x29...3F8D)</option>
+			<option value="0x55d398326f99059ff775485246999027b3197955">USDT (0x55...7955)</option>
+		{/if}
 		<option value="custom">Custom</option>
 	</select>
 	{#if token === 'custom'}

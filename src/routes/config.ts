@@ -1,11 +1,21 @@
 import { http, createConfig } from '@wagmi/core';
-import { bsc } from '@wagmi/core/chains';
+import { bsc, bscTestnet, polygon } from '@wagmi/core/chains';
 import { injected, safe } from '@wagmi/connectors';
+import { dev } from '$app/environment';
+
+const chains = [bsc, polygon];
+const transports = {
+	[bsc.id]: http(),
+	[polygon.id]: http()
+};
+
+if (dev) {
+	chains.push(bscTestnet);
+	transports[bscTestnet.id] = http();
+}
 
 export const config = createConfig({
-	chains: [bsc],
+	chains,
 	connectors: [injected(), safe()],
-	transports: {
-		[bsc.id]: http()
-	}
+	transports
 });
