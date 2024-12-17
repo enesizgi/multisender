@@ -14,7 +14,7 @@
 	import { injected } from '@wagmi/connectors';
 	import { onDestroy, onMount } from 'svelte';
 	import { erc20, multisend } from '$lib/abi';
-	import { bsc, bscTestnet, polygon } from '@wagmi/core/chains';
+	import { base, bsc, bscTestnet, polygon } from '@wagmi/core/chains';
 
 	let isLoading: boolean = false;
 	let amountsWithWallets: string = '';
@@ -25,18 +25,19 @@
 	const nativeCurrencySymbols = {
 		56: 'BNB',
 		97: 'tBNB',
-		137: 'MATIC'
+		137: 'MATIC',
+		8453: 'ETH'
 	}
 	const multiSendAddress = {
 		[bsc.id]: '0xfb6bd0c00bd348125a1f6edc36e4b7ff5dbddfba',
 		[bscTestnet.id]: '0x4707FDD773Eb97CF8A874bB1309C67a80a9616A3',
-		[polygon.id]: '0x4707FDD773Eb97CF8A874bB1309C67a80a9616A3'
+		[polygon.id]: '0x4707FDD773Eb97CF8A874bB1309C67a80a9616A3',
+		[base.id]: '0x4707FDD773Eb97CF8A874bB1309C67a80a9616A3',
 	}
 	const NATIVE_TOKEN = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 
 	$: token, customToken, chainId, updateTokenBalance(token, customToken)
 	$: token, customToken, chainId, updateTokenDecimals(token, customToken)
-	$: console.log(token, customToken)
 
 	const updateTokenDecimals = async (token: string, customToken: string) => {
 		try {
@@ -218,6 +219,7 @@
 		<option value={bsc.id} selected={chainId === bsc.id}>BNB</option>
 		<option value={bscTestnet.id} selected={chainId === bscTestnet.id}>BNB Testnet</option>
 		<option value={polygon.id} selected={chainId === polygon.id}>Polygon</option>
+		<option value={base.id} selected={chainId === base.id}>Base</option>
 	</select>
 </div>
 
