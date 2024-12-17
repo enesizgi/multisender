@@ -69,9 +69,10 @@
 
 	const updateTokenBalance = async (token: string, customToken: string) => {
 		try {
+			console.log('updateToken')
 			isLoading = true;
 			if (!account) return;
-			console.log(token)
+
 			if (token === NATIVE_TOKEN) {
 				console.log(tokenBalance)
 				tokenBalance = (await getBalance(config, {
@@ -197,6 +198,7 @@
 
 	const onNetworkChange = async (e) => {
 		try {
+			console.log(e.target.value)
 			const chain = await switchChain(config, {
 				chainId: +e.target.value
 			})
